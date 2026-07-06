@@ -1,8 +1,8 @@
 [{
-      "relation": ["delegate_permission/common.handle_all_urls"],
-      "target": {
-        "namespace": "android_app",
-        "package_name": "io.github.mohamed600.twa",
-        "sha256_cert_fingerprints": ["98:98:73:82:EA:2F:A1:12:E5:68:2C:D7:6C:37:C0:F2:2E:64:63:F9:D3:61:4A:51:55:04:76:67:FA:55:EE:B2"]
-      }
-    }]
+  "relation": ["delegate_permission/common.handle_all_urls"],
+  "target": {
+    "namespace": "android_app",
+    "package_name": "com.mohamed600githubio.topocal",
+    "sha256_cert_fingerprints": [""]
+  }
+}]
