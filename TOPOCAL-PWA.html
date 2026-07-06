@@ -1,0 +1,1183 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"/>
+<meta name="theme-color" content="#0B1F3A"/>
+<meta name="mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="apple-mobile-web-app-title" content="TOPO-CAL"/>
+<meta name="description" content="Système de calcul topographique militaire — Forces Armées Royales"/>
+<title>TOPO-CAL v4.0 — Forces Armées Royales</title>
+<link rel="manifest" href="manifest.json"/>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;background:#0B1F3A;font-family:'Inter',system-ui,sans-serif;color:#1A2332;overscroll-behavior:none;padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}
+input[type=number]{-moz-appearance:textfield}
+input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none}
+:root{
+  --bg:#F4F6F9;--surface:#fff;--card:#fff;
+  --navy:#0B1F3A;--navyLt:#162E54;
+  --border:#DDE3EC;--accent:#1A6B3C;--accentLt:#22A05A;--accentBg:#E8F5EE;
+  --gold:#B8860B;--goldLt:#D4A017;
+  --text:#1A2332;--muted:#6B7A8D;--mutedLt:#A0AABB;
+  --danger:#C0392B;--dangerBg:#FDEDEC;
+  --shadow:0 2px 12px rgba(11,31,58,.10);
+  --shadowMd:0 4px 24px rgba(11,31,58,.14);
+}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+@keyframes shake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-9px)}40%,80%{transform:translateX(9px)}}
+@keyframes fadeIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+@keyframes spin{to{transform:rotate(360deg)}}
+.page{animation:fadeIn .2s ease}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+// ══════════════════════════════════════════════════════
+// MATH CONSTANTS
+// ══════════════════════════════════════════════════════
+const G2D=360/400,D2G=400/360;
+const PWD="1996";
+
+// ══════════════════════════════════════════════════════
+// STATE MANAGER
+// ══════════════════════════════════════════════════════
+let STATE={
+  phase:"intro",  // intro | password | app
+  page:"home",
+  tab:"calculs",
+  history:[],
+  introTyped:[],
+  introPhase:"typing",
+  introBar:0,
+  introOpacity:1,
+  pwdInput:"",
+  pwdDots:[false,false,false,false],
+  pwdError:false,
+  pwdShake:false,
+};
+function setState(patch){Object.assign(STATE,typeof patch==="function"?patch(STATE):patch);render();}
+
+// ══════════════════════════════════════════════════════
+// ROUTER helpers
+// ══════════════════════════════════════════════════════
+function navigate(p){
+  setState({page:p,tab:p==="cours"?"cours":p==="politique"?"politiques":p==="profil"?"profil":"calculs"});
+  window.scrollTo(0,0);
+}
+function addHistory(module,lines){
+  setState(s=>({history:[...s.history,{module,lines,ts:Date.now()}]}));
+}
+
+// ══════════════════════════════════════════════════════
+// SVG SHIELD
+// ══════════════════════════════════════════════════════
+function shieldSVG(size){
+  return `<svg width="${size}" height="${size}" viewBox="0 0 100 100" fill="none">
+    <path d="M50 5 L90 22 L90 55 C90 75 72 90 50 97 C28 90 10 75 10 55 L10 22 Z" fill="#162E54" stroke="#D4A017" stroke-width="2.5"/>
+    <path d="M50 14 L82 28 L82 55 C82 71 67 83 50 89 C33 83 18 71 18 55 L18 28 Z" fill="#0B1F3A" stroke="#22A05A" stroke-width="1.5"/>
+    <line x1="50" y1="28" x2="50" y2="72" stroke="#D4A017" stroke-width="2"/>
+    <line x1="30" y1="50" x2="70" y2="50" stroke="#D4A017" stroke-width="2"/>
+    <circle cx="50" cy="50" r="13" fill="none" stroke="#22A05A" stroke-width="1.5"/>
+    <polygon points="50,30 47,50 50,46 53,50" fill="#D4A017"/>
+    <polygon points="50,70 47,50 50,54 53,50" fill="#4A6080"/>
+    <text x="50" y="25" text-anchor="middle" fill="#D4A017" font-size="7" font-family="monospace" font-weight="bold">N</text>
+    <text x="50" y="79" text-anchor="middle" fill="#4A6080" font-size="6" font-family="monospace">S</text>
+    <text x="74" y="53" text-anchor="middle" fill="#4A6080" font-size="6" font-family="monospace">E</text>
+    <text x="26" y="53" text-anchor="middle" fill="#4A6080" font-size="6" font-family="monospace">W</text>
+    <polygon points="30,18 31.5,22.5 36,22.5 32.5,25.5 34,30 30,27 26,30 27.5,25.5 24,22.5 28.5,22.5" fill="#D4A017"/>
+    <polygon points="70,18 71.5,22.5 76,22.5 72.5,25.5 74,30 70,27 66,30 67.5,25.5 64,22.5 68.5,22.5" fill="#D4A017"/>
+    <path d="M38 10 L42 16 L50 12 L58 16 L62 10 L60 18 L40 18 Z" fill="#D4A017" opacity="0.9"/>
+  </svg>`;
+}
+
+// ══════════════════════════════════════════════════════
+// UI HELPERS
+// ══════════════════════════════════════════════════════
+function card(content,style=""){
+  return `<div style="background:#fff;border:1px solid #DDE3EC;border-radius:10px;padding:18px 20px;box-shadow:var(--shadow);position:relative;${style}">${content}</div>`;
+}
+function field(id,label,value,unit="",type="number"){
+  return `<div style="margin-bottom:14px">
+    <label style="display:block;color:#6B7A8D;font-size:11px;margin-bottom:5px;letter-spacing:.8px;font-weight:600;text-transform:uppercase">${label}</label>
+    <div style="position:relative">
+      <input id="${id}" type="${type}" value="${value}" placeholder="0.000"
+        style="width:100%;box-sizing:border-box;background:#F4F6F9;border:2px solid #DDE3EC;border-radius:8px;padding:10px 44px 10px 14px;color:#1A2332;font-size:14px;font-family:'Courier New',monospace;outline:none"
+        onfocus="this.style.borderColor='#0B1F3A';this.style.background='#fff'"
+        onblur="this.style.borderColor='#DDE3EC';this.style.background='#F4F6F9'"/>
+      ${unit?`<span style="position:absolute;right:12px;top:50%;transform:translateY(-50%);color:#1A6B3C;font-size:11px;font-weight:700;pointer-events:none">${unit}</span>`:""}
+    </div>
+  </div>`;
+}
+function rr(label,value,hi=false){
+  return `<div style="display:flex;justify-content:space-between;align-items:center;padding:11px 14px;margin-bottom:7px;background:${hi?"#0B1F3A":"#F4F6F9"};border:1px solid ${hi?"#0B1F3A":"#DDE3EC"};border-radius:8px">
+    <span style="color:${hi?"#A0AABB":"#6B7A8D"};font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.5px">${label}</span>
+    <span style="color:${hi?"#fff":"#1A2332"};font-family:'Courier New',monospace;font-weight:700;font-size:15px">${value}</span>
+  </div>`;
+}
+function btn(id,label,variant="navy",full=true){
+  const styles={
+    navy:"background:#0B1F3A;border:2px solid #0B1F3A;color:#fff",
+    green:"background:#1A6B3C;border:2px solid #1A6B3C;color:#fff",
+    gold:"background:#D4A017;border:2px solid #D4A017;color:#fff",
+    danger:"background:#FDEDEC;border:2px solid #C0392B;color:#C0392B",
+    outline:"background:transparent;border:2px solid #0B1F3A;color:#0B1F3A",
+  };
+  return `<button id="${id}" style="${styles[variant]||styles.navy};width:${full?"100%":"auto"};padding:12px 22px;margin-top:8px;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;letter-spacing:1px;text-transform:uppercase;font-family:'Courier New',monospace">${label}</button>`;
+}
+function backBtn(){
+  return `<button onclick="navigate('home')" style="display:inline-flex;align-items:center;gap:6px;background:#fff;border:2px solid #0B1F3A;border-radius:8px;padding:7px 16px;color:#0B1F3A;cursor:pointer;font-size:12px;font-family:monospace;letter-spacing:1px;margin-bottom:20px;font-weight:700">← RETOUR</button>`;
+}
+function secTitle(icon,title,sub=""){
+  return `<div style="margin-bottom:20px;border-left:4px solid #1A6B3C;padding-left:14px">
+    <div style="display:flex;align-items:center;gap:10px">
+      <span style="font-size:20px">${icon}</span>
+      <span style="font-family:'Courier New',monospace;font-weight:700;font-size:15px;color:#0B1F3A;letter-spacing:1.5px;text-transform:uppercase">${title}</span>
+    </div>
+    ${sub?`<p style="color:#6B7A8D;font-size:12px;margin-top:4px;margin-left:30px">${sub}</p>`:""}
+  </div>`;
+}
+function gv(id){return (document.getElementById(id)||{}).value||"";}
+
+// ══════════════════════════════════════════════════════
+// INTRO
+// ══════════════════════════════════════════════════════
+const INTRO_LINES=[
+  {text:"المملكة المغربية",size:14,color:"#D4A017",weight:700},
+  {text:"القوات المسلحة الملكية",size:16,color:"#D4A017",weight:900},
+  {text:"────────────────────────",size:10,color:"rgba(255,255,255,0.12)",weight:400},
+  {text:"FORCES ARMÉES ROYALES",size:20,color:"#FFFFFF",weight:900},
+  {text:"────────────────────────",size:10,color:"rgba(255,255,255,0.12)",weight:400},
+  {text:"TOPOGRAPHIE DE TERRAIN",size:12,color:"rgba(255,255,255,0.5)",weight:400},
+  {text:"SYSTÈME TOPO-CAL  v4.0",size:13,color:"#22A05A",weight:700},
+];
+let introTyped=INTRO_LINES.map(()=>"");
+let introLi=0,introCi=0,introAlive=true;
+
+function startIntro(){
+  function tick(){
+    if(!introAlive) return;
+    if(introLi>=INTRO_LINES.length){
+      setState({introPhase:"bar"});
+      startBar(); return;
+    }
+    const cur=INTRO_LINES[introLi];
+    if(!cur){setState({introPhase:"bar"});startBar();return;}
+    introTyped[introLi]=cur.text.slice(0,introCi+1);
+    setState({introTyped:[...introTyped]});
+    introCi++;
+    if(introCi>=cur.text.length){introLi++;introCi=0;setTimeout(tick,120);}
+    else setTimeout(tick,28);
+  }
+  setTimeout(tick,700);
+}
+
+let barW=0;
+function startBar(){
+  const iv=setInterval(()=>{
+    barW+=0.5;
+    setState({introBar:Math.min(barW,100)});
+    if(barW>=100){clearInterval(iv);setState({introPhase:"fadeout"});
+      setTimeout(()=>{setState({introOpacity:0});
+        setTimeout(()=>setState({phase:"password"}),800);},100);}
+  },40);
+}
+
+function renderIntro(){
+  const {introPhase,introBar,introOpacity}=STATE;
+  return `<div style="position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    background:linear-gradient(160deg,#061228 0%,#0B1F3A 50%,#061228 100%);
+    opacity:${introOpacity};transition:opacity .7s ease">
+    <div style="position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse at center,rgba(26,107,60,.15) 0%,transparent 65%)"></div>
+    <div style="position:relative;z-index:2;text-align:center;width:100%;max-width:480px;padding:0 32px">
+      <div style="display:flex;justify-content:center;margin-bottom:36px;filter:drop-shadow(0 0 40px rgba(212,160,23,.6))">
+        ${shieldSVG(110)}
+      </div>
+      <div style="margin-bottom:28px">
+        ${INTRO_LINES.map((l,i)=>`
+          <div style="font-family:'Courier New',monospace;font-size:${l.size}px;font-weight:${l.weight};color:${l.color};
+            letter-spacing:${i===3?5:3}px;text-transform:uppercase;margin-bottom:${i===3?14:i===1?6:4}px;
+            min-height:${l.size+10}px;text-shadow:${[3].includes(i)?`0 0 30px ${l.color}88`:'none'}">
+            ${STATE.introTyped[i]||""}${introPhase==="typing"&&(STATE.introTyped[i]||"").length>0&&(STATE.introTyped[i]||"").length<l.text.length?'<span style="animation:blink .55s step-end infinite">█</span>':""}
+          </div>`).join("")}
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
+        <div style="flex:1;height:1px;background:linear-gradient(to right,transparent,rgba(255,255,255,.2))"></div>
+        <span style="color:#D4A017;font-size:16px">✦</span>
+        <div style="flex:1;height:1px;background:linear-gradient(to left,transparent,rgba(255,255,255,.2))"></div>
+      </div>
+      ${introPhase!=="typing"?`
+        <div style="margin-bottom:20px">
+          <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+            <span style="color:rgba(255,255,255,.4);font-size:10px;font-family:monospace;letter-spacing:2px">INITIALISATION DU SYSTÈME</span>
+            <span style="color:#22A05A;font-size:10px;font-family:monospace;font-weight:700">${Math.floor(introBar)}%</span>
+          </div>
+          <div style="height:5px;background:rgba(255,255,255,.1);border-radius:3px;overflow:hidden">
+            <div style="height:100%;width:${introBar}%;background:linear-gradient(to right,#1A6B3C,#22A05A,#D4A017);box-shadow:0 0 12px rgba(34,160,90,.6);transition:width .08s linear"></div>
+          </div>
+        </div>`:""}
+      <div style="border:1px solid rgba(255,255,255,.1);border-radius:6px;padding:8px 20px;display:inline-block">
+        <span style="color:rgba(255,255,255,.3);font-size:9px;font-family:monospace;letter-spacing:3px;text-transform:uppercase">خدمة الوطن — AU SERVICE DE LA PATRIE</span>
+      </div>
+    </div>
+  </div>`;
+}
+
+// ══════════════════════════════════════════════════════
+// PASSWORD
+// ══════════════════════════════════════════════════════
+function renderPassword(){
+  const {pwdDots,pwdError,pwdShake}=STATE;
+  return `<div style="min-height:100vh;background:linear-gradient(160deg,#061228 0%,#0B1F3A 100%);
+    display:flex;flex-direction:column;align-items:center;justify-content:center">
+    <div style="position:fixed;inset:0;pointer-events:none;background:radial-gradient(ellipse at center,rgba(26,107,60,.12) 0%,transparent 65%)"></div>
+    <div style="position:relative;z-index:2;text-align:center;width:100%;max-width:320px;padding:0 28px">
+      <div style="display:flex;justify-content:center;margin-bottom:24px;filter:drop-shadow(0 0 24px rgba(212,160,23,.5))">
+        ${shieldSVG(76)}
+      </div>
+      <p style="color:#D4A017;font-size:14px;font-weight:700;letter-spacing:4px;text-transform:uppercase;font-family:'Courier New',monospace;margin-bottom:4px">TOPO-CAL v4.0</p>
+      <p style="color:rgba(255,255,255,.35);font-size:10px;letter-spacing:3px;text-transform:uppercase;font-family:monospace;margin-bottom:36px">CODE D'ACCÈS REQUIS</p>
+      <div style="display:flex;justify-content:center;gap:20px;margin-bottom:32px;${pwdShake?"animation:shake .5s ease":""}" id="pwd-dots">
+        ${pwdDots.map((f,i)=>`<div style="width:18px;height:18px;border-radius:50%;
+          background:${f?(pwdError?"#C0392B":"#D4A017"):"transparent"};
+          border:2.5px solid ${f?(pwdError?"#C0392B":"#D4A017"):"rgba(255,255,255,.2)"};
+          transition:all .15s;box-shadow:${f&&!pwdError?"0 0 12px rgba(212,160,23,.6)":"none"}"></div>`).join("")}
+      </div>
+      ${pwdError?`<p style="color:#E74C3C;font-size:11px;letter-spacing:2px;margin-bottom:14px;font-family:monospace">⚠ CODE INCORRECT</p>`:""}
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:24px">
+        ${["1","2","3","4","5","6","7","8","9","⌫","0",""].map((k,i)=>{
+          if(k==="") return `<div></div>`;
+          const isBack=k==="⌫";
+          return `<button onclick="${isBack?"pwdDel()":"pwdPress('"+k+"')"}" style="padding:18px 0;
+            background:${isBack?"rgba(192,57,43,.15)":"rgba(255,255,255,.06)"};
+            border:1.5px solid ${isBack?"rgba(192,57,43,.4)":"rgba(255,255,255,.15)"};
+            border-radius:10px;color:${isBack?"#E74C3C":"rgba(255,255,255,.9)"};
+            font-size:${isBack?18:24}px;font-family:'Courier New',monospace;
+            font-weight:700;cursor:pointer">${k}</button>`;
+        }).join("")}
+      </div>
+      <p style="color:rgba(255,255,255,.12);font-size:9px;letter-spacing:3px;text-transform:uppercase;font-family:monospace">القوات المسلحة الملكية</p>
+    </div>
+  </div>`;
+}
+
+function pwdPress(d){
+  if(STATE.pwdInput.length>=4) return;
+  const next=STATE.pwdInput+d;
+  const dots=[false,false,false,false];
+  for(let i=0;i<next.length;i++) dots[i]=true;
+  setState({pwdInput:next,pwdDots:dots,pwdError:false});
+  if(next.length===4){
+    setTimeout(()=>{
+      if(next===PWD){setState({phase:"app",pwdInput:"",pwdDots:[false,false,false,false]});}
+      else{
+        setState({pwdError:true,pwdShake:true});
+        setTimeout(()=>setState({pwdInput:"",pwdDots:[false,false,false,false],pwdError:false,pwdShake:false}),900);
+      }
+    },200);
+  }
+}
+function pwdDel(){
+  const next=STATE.pwdInput.slice(0,-1);
+  const dots=[false,false,false,false];
+  for(let i=0;i<next.length;i++) dots[i]=true;
+  setState({pwdInput:next,pwdDots:dots});
+}
+
+// ══════════════════════════════════════════════════════
+// HOME PAGE
+// ══════════════════════════════════════════════════════
+const MODULES=[
+  {id:"gis",icon:"📐",title:"Gisement & Distance",desc:"Gisement et distance entre deux points",badge:"Calcul",bc:"navy"},
+  {id:"mire",icon:"📏",title:"Lecture de Mire",desc:"Dénivelée, HI et distance stadimétrique",badge:"Terrain",bc:"navy"},
+  {id:"coord",icon:"🗺️",title:"Coordonnées",desc:"Coordonnées depuis gisement et distance",badge:"Calcul",bc:"navy"},
+  {id:"conv",icon:"🔄",title:"Convertisseur",desc:"Grad ↔ Milligrad ↔ Degré ↔ Radian",badge:"Outil",bc:"navy"},
+  {id:"niv",icon:"📉",title:"Nivellement",desc:"Altitudes par cheminement",badge:"Terrain",bc:"navy"},
+  {id:"surf",icon:"⬛",title:"Surface",desc:"Superficie d'un polygone",badge:"Calcul",bc:"navy"},
+  {id:"impl",icon:"🎯",title:"Implantation",desc:"Éléments depuis une station",badge:"Terrain",bc:"navy"},
+  {id:"rayon",icon:"⭕",title:"Rayonnement",desc:"Coordonnées par rayonnement polaire",badge:"Calcul",bc:"navy"},
+  {id:"recoup",icon:"✂️",title:"Recoupement",desc:"Point inconnu par intersection",badge:"Avancé",bc:"gold"},
+  {id:"canevas",icon:"🔲",title:"Canevas Polygonal",desc:"Polygonale fermée avec compensation",badge:"Avancé",bc:"gold"},
+  {id:"drone",icon:"🚁",title:"Drone / Photogrammétrie",desc:"GSD, fauchée et planification de vol",badge:"Drone",bc:"green"},
+  {id:"hist",icon:"📋",title:"Historique & Export",desc:"Tous vos calculs — Export TXT/CSV",badge:"Session",bc:"navy"},
+];
+
+function badgeStyle(bc){
+  if(bc==="green") return "background:#E8F5EE;color:#1A6B3C;border:1px solid rgba(26,107,60,.3)";
+  if(bc==="gold") return "background:#FEF9E7;color:#B8860B;border:1px solid rgba(184,134,11,.3)";
+  return "background:rgba(11,31,58,.08);color:#0B1F3A;border:1px solid rgba(11,31,58,.15)";
+}
+
+function renderHome(){
+  const recent=STATE.history.slice(-3).reverse();
+  return `<div class="page">
+    <!-- Hero -->
+    <div style="background:linear-gradient(135deg,#0B1F3A 0%,#162E54 100%);border-radius:14px;padding:26px 22px;margin-bottom:18px;box-shadow:var(--shadowMd);position:relative;overflow:hidden">
+      <div style="position:absolute;right:-30px;top:-30px;opacity:.06">${shieldSVG(200)}</div>
+      <div style="display:flex;align-items:center;gap:14px;margin-bottom:14px">
+        ${shieldSVG(52)}
+        <div>
+          <div style="display:flex;align-items:baseline;gap:10px">
+            <h1 style="font-family:'Courier New',monospace;font-weight:900;font-size:22px;color:#fff;letter-spacing:4px;margin:0">TOPO-CAL</h1>
+            <span style="background:#FEF9E7;color:#B8860B;border:1px solid rgba(184,134,11,.3);border-radius:20px;padding:2px 8px;font-size:9px;font-weight:700;font-family:monospace;letter-spacing:.8px">v4.0</span>
+          </div>
+          <p style="color:rgba(255,255,255,.4);font-size:10px;letter-spacing:2px;font-family:monospace;text-transform:uppercase;margin:2px 0 0">Forces Armées Royales</p>
+        </div>
+      </div>
+      <p style="color:rgba(255,255,255,.65);font-size:13px;line-height:1.7;margin-bottom:16px">
+        Système de calcul topographique militaire — conçu pour les opérations de terrain, cartographie et mesures de précision.
+      </p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        ${[["12","Modules"],["10s","Intro"],["TXT/CSV","Export"],["OSM","Cartes"]].map(([v,l])=>`
+          <div style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:8px;padding:8px 12px;text-align:center">
+            <p style="color:#fff;font-family:monospace;font-weight:700;font-size:13px;margin:0">${v}</p>
+            <p style="color:rgba(255,255,255,.4);font-size:9px;letter-spacing:1px;margin:0;text-transform:uppercase">${l}</p>
+          </div>`).join("")}
+      </div>
+    </div>
+
+    <!-- Quick -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:18px">
+      ${[{id:"cours",icon:"📚",label:"Cours & Théorie",c:"#0B1F3A"},{id:"politique",icon:"📋",label:"Politiques",c:"#1A6B3C"}].map(q=>`
+        <button onclick="navigate('${q.id}')" style="background:#fff;border:2px solid ${q.c}22;border-radius:10px;padding:14px;cursor:pointer;text-align:center;box-shadow:var(--shadow)">
+          <span style="font-size:22px;display:block;margin-bottom:6px">${q.icon}</span>
+          <p style="color:${q.c};font-family:monospace;font-weight:700;font-size:11px;letter-spacing:1px;text-transform:uppercase;margin:0">${q.label}</p>
+        </button>`).join("")}
+    </div>
+
+    <!-- Modules -->
+    <p style="color:#6B7A8D;font-size:11px;letter-spacing:2px;text-transform:uppercase;margin-bottom:12px;font-family:monospace;font-weight:600">— MODULES DE CALCUL —</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px">
+      ${MODULES.map(m=>`
+        <button onclick="navigate('${m.id}')" style="background:#fff;border:1.5px solid #DDE3EC;border-radius:10px;padding:14px;text-align:left;cursor:pointer;box-shadow:var(--shadow)">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
+            <span style="font-size:20px">${m.icon}</span>
+            <span style="${badgeStyle(m.bc)};border-radius:20px;padding:3px 8px;font-size:9px;font-weight:700;font-family:monospace;letter-spacing:.8px;text-transform:uppercase">${m.badge}</span>
+          </div>
+          <p style="color:#0B1F3A;font-family:monospace;font-weight:700;font-size:10px;letter-spacing:.8px;text-transform:uppercase;margin:0 0 4px">${m.title}</p>
+          <p style="color:#6B7A8D;font-size:10px;margin:0;line-height:1.4">${m.desc}</p>
+        </button>`).join("")}
+    </div>
+
+    ${recent.length>0?`
+      <p style="color:#6B7A8D;font-size:11px;letter-spacing:2px;text-transform:uppercase;margin-bottom:12px;font-family:monospace;font-weight:600">— DERNIERS CALCULS —</p>
+      ${recent.map(h=>`
+        <div style="background:#fff;border:1px solid #DDE3EC;border-radius:8px;padding:11px 14px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;box-shadow:var(--shadow)">
+          <div>
+            <p style="color:#0B1F3A;font-family:monospace;font-size:11px;font-weight:700;margin:0 0 2px">${h.module}</p>
+            <p style="color:#6B7A8D;font-size:10px;margin:0">${h.lines[0]||""}</p>
+          </div>
+          <span style="color:#A0AABB;font-size:10px;font-family:monospace;flex-shrink:0;margin-left:8px">${new Date(h.ts).toLocaleTimeString("fr-FR")}</span>
+        </div>`).join("")}`:""}
+
+    <div style="margin-top:16px;padding:10px 14px;background:#fff;border-radius:8px;border:1px solid #DDE3EC;
+      display:flex;gap:14px;flex-wrap:wrap;font-family:monospace;font-size:10px;color:#6B7A8D;letter-spacing:1px;box-shadow:var(--shadow)">
+      <span style="color:#1A6B3C">◉ OPÉRATIONNEL</span><span>|</span><span>12 MODULES</span>
+      <span style="margin-left:auto">GRAD / MÈTRE</span>
+    </div>
+  </div>`;
+}
+
+// ══════════════════════════════════════════════════════
+// COURS PAGE
+// ══════════════════════════════════════════════════════
+let selectedCours=null;
+const COURS=[
+  {id:"c1",icon:"📐",titre:"Gisement & Angles",resume:"Angles en topographie militaire",contenu:[
+    {h:"Définition du Gisement",t:"Le gisement est l'angle horizontal mesuré dans le sens des aiguilles d'une montre à partir du Nord jusqu'à la direction considérée. Exprimé en grades (gr), degrés (°) ou milligrads (mgr)."},
+    {h:"Système Centésimal — Grades",t:"Une révolution complète = 400 grades. Quart de tour = 100 gr, demi-tour = 200 gr. 1 grade = 1000 milligrads (mgr). Ce système est utilisé en topographie militaire car il facilite les calculs."},
+    {h:"Formule du Gisement",t:"Entre A(X₁,Y₁) et B(X₂,Y₂) :\n• ΔX = X₂ - X₁\n• ΔY = Y₂ - Y₁\n• θ = atan2(ΔX, ΔY) → convertir en grades\n• Si résultat négatif → ajouter 400 gr"},
+    {h:"Gisement Inverse",t:"Gisement inverse (B→A) = Gisement(A→B) ± 200 gr\n• Si G < 200 gr → ajouter 200 gr\n• Si G ≥ 200 gr → soustraire 200 gr"},
+  ]},
+  {id:"c2",icon:"📏",titre:"Lecture de Mire",resume:"Mesurer les altitudes avec précision",contenu:[
+    {h:"La Mire Topographique",t:"Règle graduée utilisée avec un niveau ou théodolite. Les modèles 6000, 6200 et 6400 se distinguent par la finesse de leurs graduations (jusqu'à 0.5 mm pour la 6400)."},
+    {h:"Hauteur d'Instrument — HI",t:"HI = Altitude station + Lecture arrière (LA)\nC'est l'altitude du plan de visée, référence pour tous les calculs de la station."},
+    {h:"Calcul d'Altitude",t:"Altitude point = HI - Lecture avant (LV)\nDénivelée = Alt B - Alt A\n> 0 : montée | < 0 : descente"},
+    {h:"Distance Stadimétrique",t:"Distance = (Fil supérieur - Fil inférieur) × 100\nMéthode rapide sur le terrain, moins précise que la mesure directe."},
+  ]},
+  {id:"c3",icon:"🗺️",titre:"Coordonnées & Systèmes",resume:"Systèmes de coordonnées",contenu:[
+    {h:"Systèmes de Coordonnées",t:"En topographie militaire, on utilise le système cartésien local (X=Est, Y=Nord). Au Maroc, le système national est le Lambert (projection conique conforme)."},
+    {h:"Calcul de Coordonnées",t:"Depuis O(X₀,Y₀) avec distance d et gisement G :\nXp = X₀ + d × sin(G en rad)\nYp = Y₀ + d × cos(G en rad)"},
+    {h:"Polygonale",t:"Enchaînement de mesures d'angles et distances. Polygonale fermée = retour au départ. Tolérance : T = 0.02√n grades."},
+  ]},
+  {id:"c4",icon:"⭕",titre:"Rayonnement & Recoupement",resume:"Méthodes polaires avancées",contenu:[
+    {h:"Rayonnement",t:"Depuis une station connue, on mesure le gisement et la distance vers chaque point. Coordonnées : Xp = Xs + d×sin(G), Yp = Ys + d×cos(G)."},
+    {h:"Recoupement (Intersection)",t:"Permet de déterminer les coordonnées d'un point inconnu P en mesurant les gisements depuis deux points connus A et B. Résolution par système d'équations."},
+  ]},
+  {id:"c5",icon:"🔲",titre:"Canevas Polygonal",resume:"Polygonale avec compensation",contenu:[
+    {h:"Principe",t:"La polygonale permet de densifier le réseau de référence pour les levés topographiques. Elle relie plusieurs stations par des mesures d'angles et de distances."},
+    {h:"Compensation Angulaire",t:"Pour une polygonale fermée :\nΣangles théorique = (n-2) × 200 gr\nErreur = Σmesurés - Σthéorique\nCorrection = -Erreur / n (distribuée également)"},
+  ]},
+  {id:"c6",icon:"⬛",titre:"Calcul de Surface",resume:"Méthodes de calcul de superficies",contenu:[
+    {h:"Méthode de Gauss (Shoelace)",t:"S = |½ × Σ(Xᵢ×Yᵢ₊₁ - Xᵢ₊₁×Yᵢ)|\nSommets dans l'ordre (horaire ou antihoraire). Méthode la plus précise pour un polygone défini par ses coordonnées."},
+    {h:"Conversions",t:"1 ha = 10 000 m²\n1 are = 100 m²\n1 km² = 100 ha = 1 000 000 m²"},
+  ]},
+  {id:"c7",icon:"🚁",titre:"Drone & Photogrammétrie",resume:"Acquisition de données par drone",contenu:[
+    {h:"GSD — Résolution au Sol",t:"GSD ≈ (Altitude × Taille capteur) / (Focale × Résolution)\nPour la topographie : GSD < 5 cm recommandé."},
+    {h:"Fauchée",t:"Fauchée = 2 × Altitude × tan(FOV/2)\nLargeur de terrain capturée en une passe."},
+    {h:"Recouvrement",t:"70-80% frontal et 60-70% latéral recommandés. Plus élevé = meilleure qualité du modèle 3D."},
+  ]},
+];
+
+function renderCours(){
+  if(selectedCours){
+    const c=COURS.find(x=>x.id===selectedCours);
+    return `<div class="page">
+      <button onclick="selectedCours=null;render()" style="display:inline-flex;align-items:center;gap:6px;background:#fff;border:2px solid #0B1F3A;border-radius:8px;padding:7px 16px;color:#0B1F3A;cursor:pointer;font-size:12px;font-family:monospace;letter-spacing:1px;margin-bottom:20px;font-weight:700">← RETOUR</button>
+      ${secTitle(c.icon,c.titre,c.resume)}
+      ${c.contenu.map(s=>`
+        ${card(`<p style="color:#0B1F3A;font-family:monospace;font-weight:700;font-size:12px;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;padding-bottom:8px;border-bottom:2px solid #1A6B3C">${s.h}</p>
+        <p style="color:#1A2332;font-size:13px;line-height:1.85;white-space:pre-line;margin:0">${s.t}</p>`,"margin-bottom:12px")}`).join("")}
+    </div>`;
+  }
+  return `<div class="page">
+    ${secTitle("📚","Cours & Théorie","Fondamentaux de la topographie militaire")}
+    ${card(`<p style="color:rgba(255,255,255,.75);font-size:13px;line-height:1.7;margin:0">Ces cours couvrent les bases théoriques de tous les modules. Chaque leçon inclut les formules, définitions et applications pratiques sur le terrain.</p>`,"background:#0B1F3A;margin-bottom:18px")}
+    ${COURS.map(c=>`
+      <button onclick="selectedCours='${c.id}';render()" style="width:100%;background:#fff;border:1.5px solid #DDE3EC;border-radius:10px;padding:16px 18px;text-align:left;cursor:pointer;margin-bottom:10px;display:flex;align-items:center;gap:14px;box-shadow:var(--shadow)">
+        <span style="font-size:26px;flex-shrink:0">${c.icon}</span>
+        <div style="flex:1">
+          <p style="color:#0B1F3A;font-family:monospace;font-weight:700;font-size:12px;letter-spacing:1px;text-transform:uppercase;margin:0 0 4px">${c.titre}</p>
+          <p style="color:#6B7A8D;font-size:11px;margin:0">${c.resume}</p>
+        </div>
+        <span style="color:#A0AABB;font-size:20px">›</span>
+      </button>`).join("")}
+  </div>`;
+}
+
+// ══════════════════════════════════════════════════════
+// POLITIQUE PAGE
+// ══════════════════════════════════════════════════════
+function renderPolitique(){
+  const secs=[
+    {icon:"🎯",titre:"Objet et Champ d'Application",contenu:"TOPO-CAL v4.0 est un système de calcul topographique développé pour les Forces Armées Royales du Maroc.\n\nCe système couvre : nivellement, calcul de coordonnées, implantation, mesure de surfaces et planification de missions photogrammétriques."},
+    {icon:"🔐",titre:"Contrôle d'Accès",contenu:"L'accès est protégé par un code personnel.\n\n• Ne communiquez jamais votre code à un tiers\n• Verrouillez le système quand il n'est pas utilisé\n• Signalez toute compromission à votre hiérarchie"},
+    {icon:"📊",titre:"Précision et Responsabilité",contenu:"Les résultats sont basés sur des formules mathématiques précises.\n\n• Vérifiez toujours les données saisies\n• Tout résultat critique doit être vérifié indépendamment\n• L'utilisateur assume l'entière responsabilité des résultats"},
+    {icon:"💾",titre:"Gestion des Données",contenu:"Les calculs sont sauvegardés temporairement en session.\n\n• L'historique est effacé à la fermeture\n• Les exports (TXT/CSV) sont des documents de service\n• Ne saisissez pas de coordonnées sensibles sur appareils non sécurisés"},
+    {icon:"🚁",titre:"Module Drone",contenu:"Le module drone est conçu pour la photogrammétrie civile.\n\n• Les calculs de GSD sont indicatifs\n• Respectez la réglementation des espaces aériens\n• Toute mission doit être préalablement autorisée"},
+  ];
+  return `<div class="page">
+    ${secTitle("📋","Politiques d'Utilisation","Règles et procédures — TOPO-CAL v4.0")}
+    <div style="background:#0B1F3A;border-radius:10px;padding:16px 20px;margin-bottom:18px;box-shadow:var(--shadowMd)">
+      <p style="color:#D4A017;font-family:monospace;font-weight:700;font-size:11px;letter-spacing:2px;text-transform:uppercase;margin-bottom:8px">⚠ DOCUMENT OFFICIEL</p>
+      <p style="color:rgba(255,255,255,.7);font-size:12px;line-height:1.7;margin:0">Tout utilisateur autorisé est tenu de lire et respecter ces politiques avant toute utilisation du système.</p>
+    </div>
+    ${secs.map(s=>`
+      ${card(`<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;padding-bottom:10px;border-bottom:2px solid #1A6B3C">
+        <span style="font-size:20px">${s.icon}</span>
+        <p style="color:#0B1F3A;font-family:monospace;font-weight:700;font-size:12px;letter-spacing:1px;text-transform:uppercase;margin:0">${s.titre}</p>
+      </div>
+      <p style="color:#1A2332;font-size:12px;line-height:1.85;white-space:pre-line;margin:0">${s.contenu}</p>`,"margin-bottom:12px")}`).join("")}
+    <div style="padding:12px 16px;background:#0B1F3A;border-radius:8px;text-align:center;margin-top:8px">
+      <p style="color:rgba(255,255,255,.3);font-family:monospace;font-size:9px;letter-spacing:2px;margin:0;text-transform:uppercase">TOPO-CAL v4.0 — Forces Armées Royales — Tous droits réservés</p>
+    </div>
+  </div>`;
+}
+
+// ══════════════════════════════════════════════════════
+// PROFIL PAGE
+// ══════════════════════════════════════════════════════
+function renderProfil(){
+  const stats=[
+    {icon:"⭐",label:"Grade",value:"Caporal (CAL)"},
+    {icon:"🏛️",label:"Unité",value:"Caporal — 2ème Garde"},
+    {icon:"📅",label:"Expérience",value:"6 ans de service"},
+    {icon:"🗺️",label:"Spécialité",value:"Topographie de Terrain"},
+    {icon:"🎖️",label:"Corps",value:"Forces Armées Royales"},
+    {icon:"🇲🇦",label:"Pays",value:"Royaume du Maroc"},
+  ];
+  return `<div class="page">
+    <!-- Hero -->
+    <div style="background:linear-gradient(135deg,#0B1F3A 0%,#162E54 100%);border-radius:14px;padding:28px 22px;margin-bottom:18px;box-shadow:var(--shadowMd);text-align:center;position:relative;overflow:hidden">
+      <div style="position:absolute;right:-30px;top:-30px;opacity:.05">${shieldSVG(200)}</div>
+      <div style="width:88px;height:88px;border-radius:50%;background:linear-gradient(135deg,#B8860B,#D4A017);display:flex;align-items:center;justify-content:center;margin:0 auto 16px;font-size:36px;box-shadow:0 0 0 4px rgba(212,160,23,.3),0 0 0 8px rgba(212,160,23,.1)">🪖</div>
+      <h2 style="font-family:'Courier New',monospace;font-weight:900;font-size:20px;color:#fff;letter-spacing:2px;text-transform:uppercase;margin:0 0 4px">Mohamed Daoudi</h2>
+      <p style="color:rgba(255,255,255,.6);font-size:12px;font-family:monospace;letter-spacing:2px;text-transform:uppercase;margin:0 0 2px">Caporal (CAL)</p>
+      <p style="color:rgba(255,255,255,.4);font-size:11px;font-family:monospace;letter-spacing:2px;text-transform:uppercase;margin:0 0 16px">2ème Garde</p>
+      <div style="display:inline-flex;align-items:center;gap:8px;background:rgba(34,160,90,.2);border:1px solid rgba(34,160,90,.4);border-radius:20px;padding:5px 14px;margin-bottom:20px">
+        <span style="color:#22A05A;font-size:10px;font-family:monospace;letter-spacing:1px">◉ DÉVELOPPEUR TOPO-CAL v4.0</span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
+        ${[["6","Ans d'expérience"],["12","Modules créés"],["CAL","Caporal"]].map(([v,l])=>`
+          <div style="background:rgba(255,255,255,.08);border-radius:8px;padding:10px 8px">
+            <p style="color:#fff;font-family:monospace;font-weight:900;font-size:18px;margin:0">${v}</p>
+            <p style="color:rgba(255,255,255,.4);font-size:9px;letter-spacing:1px;margin:0;text-transform:uppercase">${l}</p>
+          </div>`).join("")}
+      </div>
+    </div>
+
+    <!-- Infos -->
+    ${card(`<p style="color:#0B1F3A;font-family:monospace;font-weight:700;font-size:12px;letter-spacing:1px;text-transform:uppercase;margin-bottom:14px;padding-bottom:10px;border-bottom:2px solid #1A6B3C">📋 INFORMATIONS MILITAIRES</p>
+    ${stats.map((s,i)=>`
+      <div style="display:flex;align-items:center;gap:14px;padding:11px 0;${i<stats.length-1?"border-bottom:1px solid #DDE3EC":""}">
+        <div style="width:38px;height:38px;border-radius:8px;background:rgba(11,31,58,.08);border:1px solid rgba(11,31,58,.15);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">${s.icon}</div>
+        <div>
+          <p style="color:#6B7A8D;font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;margin:0 0 2px">${s.label}</p>
+          <p style="color:#0B1F3A;font-size:13px;font-weight:700;font-family:'Courier New',monospace;margin:0">${s.value}</p>
+        </div>
+      </div>`).join("")}`,"margin-bottom:14px")}
+
+    <!-- Compétences -->
+    <p style="color:#6B7A8D;font-size:11px;letter-spacing:2px;text-transform:uppercase;margin-bottom:12px;font-family:monospace;font-weight:600">— COMPÉTENCES —</p>
+    ${[
+      {cat:"Calculs Topographiques",items:["Gisement & Distance","Nivellement par cheminement","Coordonnées & Rayonnement","Implantation de points","Recoupement / Intersection","Canevas polygonal"]},
+      {cat:"Instruments de Terrain",items:["Mire topographique (6000/6200/6400)","Théodolite","Niveau optique","GPS de terrain"]},
+      {cat:"Technologies",items:["Photogrammétrie par drone","Cartographie numérique","OpenStreetMap / SIG","Développement TOPO-CAL"]},
+    ].map(c=>card(`<p style="color:#0B1F3A;font-family:monospace;font-weight:700;font-size:12px;letter-spacing:1px;text-transform:uppercase;margin-bottom:12px;padding-bottom:8px;border-bottom:2px solid #1A6B3C">${c.cat}</p>
+    <div style="display:flex;flex-wrap:wrap;gap:8px">${c.items.map(item=>`<span style="background:#E8F5EE;color:#1A6B3C;border:1px solid rgba(26,107,60,.3);border-radius:20px;padding:5px 12px;font-size:11px;font-weight:600;font-family:monospace">✓ ${item}</span>`).join("")}</div>`,"margin-bottom:12px")).join("")}
+
+    <!-- About -->
+    <div style="background:#0B1F3A;border-radius:12px;padding:20px;margin-bottom:14px;box-shadow:var(--shadowMd)">
+      <p style="color:#D4A017;font-family:monospace;font-weight:700;font-size:12px;letter-spacing:2px;text-transform:uppercase;margin-bottom:12px">🚀 À PROPOS DE TOPO-CAL</p>
+      <p style="color:rgba(255,255,255,.7);font-size:13px;line-height:1.8;margin:0 0 14px">
+        TOPO-CAL v4.0 est développé par <span style="color:#D4A017;font-weight:700">Caporal Mohamed Daoudi</span>, topographe militaire avec 6 ans d'expérience au sein de la <span style="color:#22A05A;font-weight:700">2ème Garde — Forces Armées Royales du Maroc</span>.
+      </p>
+      <div style="padding:12px;background:rgba(255,255,255,.05);border-radius:8px;border:1px solid rgba(255,255,255,.1)">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          ${[["Version","v4.0"],["Modules","12 actifs"],["Unité angulaire","Grade (gr)"],["Système","Métrique (m)"]].map(([k,v])=>`
+            <div>
+              <p style="color:rgba(255,255,255,.35);font-size:10px;font-family:monospace;letter-spacing:1px;text-transform:uppercase;margin:0 0 2px">${k}</p>
+              <p style="color:#fff;font-size:12px;font-family:monospace;font-weight:700;margin:0">${v}</p>
+            </div>`).join("")}
+        </div>
+      </div>
+    </div>
+
+    <!-- Signature -->
+    <div style="text-align:center;padding:18px;background:#fff;border-radius:10px;border:1px solid #DDE3EC;box-shadow:var(--shadow)">
+      ${shieldSVG(42)}
+      <p style="color:#0B1F3A;font-family:'Courier New',monospace;font-weight:700;font-size:13px;letter-spacing:2px;text-transform:uppercase;margin:10px 0 3px">CPL Mohamed Daoudi — 2ème Garde</p>
+      <p style="color:#6B7A8D;font-size:10px;font-family:monospace;letter-spacing:1px;margin:0">القوات المسلحة الملكية — خدمة الوطن</p>
+    </div>
+  </div>`;
+}
+
+// ══════════════════════════════════════════════════════
+// CALCULATION MODULES
+// ══════════════════════════════════════════════════════
+// Each module has its own local state stored in modState
+let modState={};
+function ms(key,def){if(modState[key]===undefined)modState[key]=def;return modState[key];}
+function mset(key,val){modState[key]=val;render();}
+
+// Helper: get array state
+function getArr(key,def){if(!modState[key])modState[key]=def.map((x,i)=>({...x,id:i+1}));return modState[key];}
+
+function renderGis(){
+  const res=ms("gis_res",null);
+  return `<div class="page">
+    ${backBtn()}
+    ${secTitle("📐","Gisement & Distance","Calcul du gisement et de la distance entre deux points")}
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
+      ${card(`<p style="color:#0B1F3A;font-size:11px;font-family:monospace;font-weight:700;letter-spacing:1px;margin-bottom:12px">◈ POINT A</p>
+        ${field("gx1","X1 — Est",ms("gx1",""),"m")}${field("gy1","Y1 — Nord",ms("gy1",""),"m")}`)}
+      ${card(`<p style="color:#1A6B3C;font-size:11px;font-family:monospace;font-weight:700;letter-spacing:1px;margin-bottom:12px">◈ POINT B</p>
+        ${field("gx2","X2 — Est",ms("gx2",""),"m")}${field("gy2","Y2 — Nord",ms("gy2",""),"m")}`)}
+    </div>
+    ${btn("btn-gis","⚡ Calculer")}
+    ${res?`<div style="margin-top:18px">${rr("Distance",res.dist+" m",true)}${rr("Gisement (grad)",res.grad+" gr",true)}${rr("Gisement (mgr)",res.mgr+" mgr")}${rr("Gisement (degrés)",res.deg+" °")}${rr("ΔX",res.dx+" m")}${rr("ΔY",res.dy+" m")}</div>`:""}
+  </div>`;
+}
+function calcGis(){
+  ["gx1","gy1","gx2","gy2"].forEach(k=>mset(k,gv(k)));
+  const [X1,Y1,X2,Y2]=[ms("gx1",""),ms("gy1",""),ms("gx2",""),ms("gy2","")].map(Number);
+  if([X1,Y1,X2,Y2].some(isNaN)){render();return;}
+  const dx=X2-X1,dy=Y2-Y1;
+  let rad=Math.atan2(dx,dy);if(rad<0)rad+=2*Math.PI;
+  const deg=rad*180/Math.PI,grad=deg*D2G,dist=Math.sqrt(dx*dx+dy*dy);
+  const res={dist:dist.toFixed(4),grad:grad.toFixed(4),mgr:(grad*1000).toFixed(1),deg:deg.toFixed(4),dx:dx.toFixed(4),dy:dy.toFixed(4)};
+  mset("gis_res",res);
+  addHistory("Gisement & Distance",[`A(${X1},${Y1}) → B(${X2},${Y2})`,`Distance: ${res.dist} m`,`Gisement: ${res.grad} gr | ${res.mgr} mgr`]);
+}
+
+function renderMire(){
+  const barre=ms("mire_barre","6000"),res=ms("mire_res",null);
+  return `<div class="page">
+    ${backBtn()}
+    ${secTitle("📏","Lecture de Mire","Calcul de la dénivelée et de la hauteur d'instrument")}
+    ${card(`<p style="color:#6B7A8D;font-size:11px;font-weight:600;letter-spacing:1px;margin-bottom:10px;text-transform:uppercase">Sélection de la mire</p>
+      <div style="display:flex;gap:8px;margin-bottom:10px">
+        ${["6000","6200","6400"].map(b=>`<button onclick="mset('mire_barre','${b}')" style="flex:1;padding:10px 0;background:${barre===b?"#0B1F3A":"#F4F6F9"};border:2px solid ${barre===b?"#0B1F3A":"#DDE3EC"};border-radius:8px;color:${barre===b?"#fff":"#1A2332"};font-weight:${barre===b?700:400};font-size:14px;cursor:pointer;font-family:'Courier New',monospace">${b}</button>`).join("")}
+      </div>
+      <p style="color:#1A6B3C;font-size:11px;font-weight:600">${barre==="6000"?"▸ Graduation : 1 mm — Usage standard":barre==="6200"?"▸ Graduation : 1 mm — Précision améliorée":"▸ Graduation : 0.5 mm — Très haute précision"}</p>`
+    ,"margin-bottom:14px")}
+    ${card(`${field("mire_alt","Altitude point A",ms("mire_alt",""),"m")}${field("mire_la","Lecture arrière — LA",ms("mire_la",""),"m")}${field("mire_lm","Lecture milieu — LM",ms("mire_lm",""),"m")}${field("mire_lv","Lecture avant — LV",ms("mire_lv",""),"m")}`,"margin-bottom:14px")}
+    ${btn("btn-mire","⚡ Calculer")}
+    ${res?`<div style="margin-top:18px">${rr("Hauteur d'instrument (HI)",res.HI+" m",true)}${rr("Altitude point B",res.altB+" m",true)}${rr("Dénivelée (Δh)",res.deniv+" m")}${rr("Distance stadimétrique",res.dist+" m")}</div>`:""}
+  </div>`;
+}
+function calcMire(){
+  ["mire_alt","mire_la","mire_lm","mire_lv"].forEach(k=>mset(k,gv(k)));
+  const LA=+ms("mire_la",""),LV=+ms("mire_lv",""),AA=+ms("mire_alt","");
+  if([LA,LV,AA].some(isNaN)){render();return;}
+  const HI=AA+LA,altB=HI-LV,deniv=altB-AA,dist=(LA-LV)*100;
+  const res={HI:HI.toFixed(4),altB:altB.toFixed(4),deniv:deniv.toFixed(4),dist:Math.abs(dist).toFixed(2)};
+  mset("mire_res",res);
+  addHistory("Lecture de Mire",[`Mire ${ms("mire_barre","6000")} | Alt A: ${AA}m`,`HI: ${res.HI}m | Alt B: ${res.altB}m`,`Dénivelée: ${res.deniv}m`]);
+}
+
+function renderConv(){
+  const from=ms("conv_from","grad"),res=ms("conv_res",null);
+  return `<div class="page">
+    ${backBtn()}
+    ${secTitle("🔄","Convertisseur d'Unités","Conversion entre grad, milligrad, degré et radian")}
+    ${card(`<p style="color:#6B7A8D;font-size:11px;font-weight:600;letter-spacing:1px;margin-bottom:10px;text-transform:uppercase">Unité d'entrée</p>
+      <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+        ${[["grad","Grad"],["mgr","Mgr"],["deg","Degré"],["rad","Radian"]].map(([k,l])=>`<button onclick="mset('conv_from','${k}')" style="padding:9px 16px;background:${from===k?"#0B1F3A":"#F4F6F9"};border:2px solid ${from===k?"#0B1F3A":"#DDE3EC"};border-radius:8px;color:${from===k?"#fff":"#1A2332"};font-weight:${from===k?700:400};cursor:pointer;font-size:12px;font-family:monospace">${l}</button>`).join("")}
+      </div>
+      ${field("conv_val","Valeur en "+from,ms("conv_val",""))}
+      ${btn("btn-conv","⚡ Convertir")}
+      ${res?`<div style="margin-top:16px">${rr("Grad (gr)",res.grad+" gr",from!=="grad")}${rr("Milligrad (mgr)",res.mgr+" mgr",from!=="mgr")}${rr("Degré (°)",res.deg+" °",from!=="deg")}${rr("Radian (rad)",res.rad+" rad",from!=="rad")}</div>`:""}`
+    ,"margin-bottom:14px")}
+    ${card(`<p style="color:#6B7A8D;font-size:11px;font-weight:600;letter-spacing:1px;margin-bottom:12px;text-transform:uppercase">Table de référence</p>
+      <table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead><tr style="border-bottom:2px solid #0B1F3A">${["Angle","Grad","Milligrad","Degré"].map(h=>`<th style="color:#0B1F3A;text-align:left;padding:7px 8px;font-family:monospace">${h}</th>`).join("")}</tr></thead>
+        <tbody>${[["Tour complet","400 gr","400 000","360 °"],["Demi-tour","200 gr","200 000","180 °"],["Quart","100 gr","100 000","90 °"],["Dixième","40 gr","40 000","36 °"]].map(([n,...v],i)=>`<tr style="background:${i%2===0?"#F4F6F9":"#fff"}"><td style="color:#6B7A8D;padding:7px 8px;font-family:monospace;font-size:11px">${n}</td>${v.map(vv=>`<td style="color:#1A2332;padding:7px 8px;font-family:monospace;font-size:11px">${vv}</td>`).join("")}</tr>`).join("")}</tbody>
+      </table>`)}
+  </div>`;
+}
+function calcConv(){
+  mset("conv_val",gv("conv_val"));
+  const v=+ms("conv_val",""),from=ms("conv_from","grad");
+  if(isNaN(v)){render();return;}
+  let grad,deg,mgr,rad;
+  if(from==="grad"){grad=v;deg=v*G2D;mgr=v*1000;rad=deg*Math.PI/180;}
+  else if(from==="deg"){deg=v;grad=v*D2G;mgr=grad*1000;rad=v*Math.PI/180;}
+  else if(from==="mgr"){mgr=v;grad=v/1000;deg=grad*G2D;rad=deg*Math.PI/180;}
+  else{rad=v;deg=v*180/Math.PI;grad=deg*D2G;mgr=grad*1000;}
+  mset("conv_res",{grad:grad.toFixed(6),mgr:mgr.toFixed(3),deg:deg.toFixed(6),rad:rad.toFixed(8)});
+}
+
+function renderNiv(){
+  const pts=getArr("niv_pts",[{name:"St. 1",la:"",lv:""},{name:"St. 2",la:"",lv:""}]);
+  const res=ms("niv_res",null);
+  return `<div class="page">
+    ${backBtn()}
+    ${secTitle("📉","Nivellement par Cheminement","Calcul des altitudes successives par stations")}
+    ${card(field("niv_alt","Altitude point de départ",ms("niv_alt",""),"m"),"margin-bottom:14px")}
+    ${pts.map((pt,i)=>card(`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <p style="color:#0B1F3A;font-size:11px;font-family:monospace;font-weight:700">${pt.name}</p>
+      ${pts.length>1?`<button onclick="nivDel(${i})" style="background:#FDEDEC;border:1px solid #C0392B;border-radius:6px;color:#C0392B;cursor:pointer;padding:4px 12px;font-size:11px;font-family:monospace">✕</button>`:""}
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      ${field("niv_la_"+i,"Lecture arrière (LA)",pt.la,"m")}
+      ${field("niv_lv_"+i,"Lecture avant (LV)",pt.lv,"m")}
+    </div>`,"margin-bottom:10px")).join("")}
+    <button onclick="nivAdd()" style="width:100%;padding:10px;background:transparent;border:2px dashed #DDE3EC;border-radius:8px;color:#6B7A8D;cursor:pointer;font-size:12px;font-family:monospace;letter-spacing:1px;margin-bottom:4px">+ AJOUTER UNE STATION</button>
+    ${btn("btn-niv","⚡ Calculer")}
+    ${res?`<div style="margin-top:18px">${rr("Altitude départ",res.alts[0]+" m")}${pts.map((st,i)=>`${rr(st.name+" — Dénivelée",res.denivs[i]+" m")}${rr(st.name+" — Altitude",res.alts[i+1]+" m",true)}`).join("")}${rr("Dénivelée totale",res.total+" m",true)}</div>`:""}
+  </div>`;
+}
+function nivAdd(){const pts=getArr("niv_pts",[]);pts.push({name:`St. ${pts.length+1}`,la:"",lv:""});mset("niv_pts",pts);}
+function nivDel(i){const pts=getArr("niv_pts",[]);pts.splice(i,1);pts.forEach((p,j)=>p.name=`St. ${j+1}`);mset("niv_pts",pts);}
+function calcNiv(){
+  mset("niv_alt",gv("niv_alt"));
+  const pts=getArr("niv_pts",[]);
+  pts.forEach((pt,i)=>{pt.la=gv("niv_la_"+i)||"";pt.lv=gv("niv_lv_"+i)||"";});
+  mset("niv_pts",[...pts]);
+  const alt0=+ms("niv_alt","");if(isNaN(alt0)){render();return;}
+  let alts=[alt0],denivs=[];
+  for(let i=0;i<pts.length;i++){
+    const la=+pts[i].la,lv=+pts[i].lv;
+    if(isNaN(la)||isNaN(lv)){render();return;}
+    denivs.push((la-lv).toFixed(4));
+    alts.push(+(alts[alts.length-1]+la-lv));
+  }
+  const res={alts:alts.map(a=>a.toFixed(4)),denivs,total:(alts[alts.length-1]-alt0).toFixed(4)};
+  mset("niv_res",res);
+  addHistory("Nivellement",[`Alt départ: ${alt0}m`,...pts.map((s,i)=>`${s.name}: ΔH=${denivs[i]}m → Alt=${res.alts[i+1]}m`),`Total: ${res.total}m`]);
+}
+
+function renderSurf(){
+  const pts=getArr("surf_pts",[{name:"P1",x:"",y:""},{name:"P2",x:"",y:""},{name:"P3",x:"",y:""}]);
+  const res=ms("surf_res",null);
+  return `<div class="page">
+    ${backBtn()}
+    ${secTitle("⬛","Calcul de Surface","Superficie d'un polygone — Méthode de Gauss")}
+    ${card(`<p style="color:#6B7A8D;font-size:12px">▸ Saisissez les sommets dans l'ordre (horaire ou antihoraire)</p>`,"margin-bottom:12px")}
+    ${pts.map((pt,i)=>card(`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <p style="color:#1A6B3C;font-size:11px;font-family:monospace;font-weight:700">${pt.name}</p>
+      ${pts.length>3?`<button onclick="surfDel(${i})" style="background:#FDEDEC;border:1px solid #C0392B;border-radius:6px;color:#C0392B;cursor:pointer;padding:4px 12px;font-size:11px;font-family:monospace">✕</button>`:""}
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      ${field("surf_x_"+i,"X — Est",pt.x,"m")}${field("surf_y_"+i,"Y — Nord",pt.y,"m")}
+    </div>`,"margin-bottom:10px")).join("")}
+    <button onclick="surfAdd()" style="width:100%;padding:10px;background:transparent;border:2px dashed #DDE3EC;border-radius:8px;color:#6B7A8D;cursor:pointer;font-size:12px;font-family:monospace;letter-spacing:1px;margin-bottom:4px">+ AJOUTER UN SOMMET</button>
+    ${btn("btn-surf","⚡ Calculer la Surface")}
+    ${res?`<div style="margin-top:18px">${rr("Sommets",res.n+" points")}${rr("Surface (m²)",res.m2+" m²",true)}${rr("Surface (ha)",res.ha+" ha",true)}${rr("Surface (ares)",res.are+" a")}</div>`:""}
+  </div>`;
+}
+function surfAdd(){const pts=getArr("surf_pts",[]);pts.push({name:`P${pts.length+1}`,x:"",y:""});mset("surf_pts",pts);}
+function surfDel(i){const pts=getArr("surf_pts",[]);pts.splice(i,1);pts.forEach((p,j)=>p.name=`P${j+1}`);mset("surf_pts",pts);}
+function calcSurf(){
+  const pts=getArr("surf_pts",[]);
+  pts.forEach((pt,i)=>{pt.x=gv("surf_x_"+i)||"";pt.y=gv("surf_y_"+i)||"";});
+  mset("surf_pts",[...pts]);
+  const coords=pts.map(p=>({x:+p.x,y:+p.y}));
+  if(coords.some(c=>isNaN(c.x)||isNaN(c.y))||coords.length<3){render();return;}
+  let area=0;const n=coords.length;
+  for(let i=0;i<n;i++){const j=(i+1)%n;area+=coords[i].x*coords[j].y-coords[j].x*coords[i].y;}
+  const m2=Math.abs(area/2);
+  const res={m2:m2.toFixed(4),ha:(m2/10000).toFixed(6),are:(m2/100).toFixed(4),n:coords.length};
+  mset("surf_res",res);
+  addHistory("Calcul de Surface",[`Polygone à ${coords.length} sommets`,`Surface: ${res.m2} m²`,`${res.ha} ha`]);
+}
+
+function renderImpl(){
+  const pts=getArr("impl_pts",[{name:"P1",x:"",y:""}]);
+  const res=ms("impl_res",[]);
+  return `<div class="page">
+    ${backBtn()}
+    ${secTitle("🎯","Implantation de Points","Éléments d'implantation depuis une station avec orientation")}
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
+      ${card(`<p style="color:#0B1F3A;font-size:11px;font-family:monospace;font-weight:700;margin-bottom:12px">◈ STATION</p>${field("impl_sx","X Station",ms("impl_sx",""),"m")}${field("impl_sy","Y Station",ms("impl_sy",""),"m")}`)}
+      ${card(`<p style="color:#6B7A8D;font-size:11px;font-family:monospace;font-weight:700;margin-bottom:12px">◈ PT. ORIENTÉ</p>${field("impl_ox","X Orientation",ms("impl_ox",""),"m")}${field("impl_oy","Y Orientation",ms("impl_oy",""),"m")}`)}
+    </div>
+    ${pts.map((pt,i)=>card(`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <p style="color:#1A6B3C;font-size:11px;font-family:monospace;font-weight:700">${pt.name}</p>
+      ${pts.length>1?`<button onclick="implDel(${i})" style="background:#FDEDEC;border:1px solid #C0392B;border-radius:6px;color:#C0392B;cursor:pointer;padding:4px 12px;font-size:11px;font-family:monospace">✕</button>`:""}
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      ${field("impl_x_"+i,"X — Est",pt.x,"m")}${field("impl_y_"+i,"Y — Nord",pt.y,"m")}
+    </div>`,"margin-bottom:10px")).join("")}
+    <button onclick="implAdd()" style="width:100%;padding:10px;background:transparent;border:2px dashed #DDE3EC;border-radius:8px;color:#6B7A8D;cursor:pointer;font-size:12px;font-family:monospace;letter-spacing:1px;margin-bottom:4px">+ AJOUTER UN POINT</button>
+    ${btn("btn-impl","⚡ Calculer l'Implantation")}
+    ${res.length>0?`<div style="margin-top:18px">${res.map(r=>`
+      <div style="background:#F4F6F9;border:1px solid #DDE3EC;border-radius:8px;padding:14px;margin-bottom:8px">
+        <p style="color:#0B1F3A;font-family:monospace;font-weight:700;margin-bottom:10px">◈ ${r.name}</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+          ${[["Distance",r.dist,"m"],["Gisement",r.gis,"gr"],["Angle Hz",r.angle,"gr"]].map(([l,v,u])=>`
+            <div style="background:#fff;border-radius:6px;padding:10px;border:1px solid #DDE3EC">
+              <p style="color:#6B7A8D;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:1px;margin:0 0 3px">${l}</p>
+              <p style="color:#0B1F3A;font-family:monospace;font-weight:700;font-size:12px;margin:0">${v}<span style="color:#1A6B3C;font-size:10px;margin-left:4px">${u}</span></p>
+            </div>`).join("")}
+        </div>
+      </div>`).join("")}</div>`:""}
+  </div>`;
+}
+function implAdd(){const pts=getArr("impl_pts",[]);pts.push({name:`P${pts.length+1}`,x:"",y:""});mset("impl_pts",pts);}
+function implDel(i){const pts=getArr("impl_pts",[]);pts.splice(i,1);pts.forEach((p,j)=>p.name=`P${j+1}`);mset("impl_pts",pts);}
+function calcImpl(){
+  ["impl_sx","impl_sy","impl_ox","impl_oy"].forEach(k=>mset(k,gv(k)));
+  const pts=getArr("impl_pts",[]);
+  pts.forEach((pt,i)=>{pt.x=gv("impl_x_"+i)||"";pt.y=gv("impl_y_"+i)||"";});
+  mset("impl_pts",[...pts]);
+  const SX=+ms("impl_sx",""),SY=+ms("impl_sy",""),OX=+ms("impl_ox",""),OY=+ms("impl_oy","");
+  if([SX,SY,OX,OY].some(isNaN)){render();return;}
+  let gisO=Math.atan2(OX-SX,OY-SY);if(gisO<0)gisO+=2*Math.PI;
+  const gisOG=gisO*180/Math.PI*D2G;
+  const res=pts.map(pt=>{
+    const PX=+pt.x,PY=+pt.y;
+    if(isNaN(PX)||isNaN(PY))return {...pt,dist:"—",gis:"—",angle:"—"};
+    const dx=PX-SX,dy=PY-SY;
+    let gisP=Math.atan2(dx,dy);if(gisP<0)gisP+=2*Math.PI;
+    const gG=gisP*180/Math.PI*D2G,dist=Math.sqrt(dx*dx+dy*dy);
+    let hz=gG-gisOG;if(hz<0)hz+=400;
+    return {...pt,dist:dist.toFixed(4),gis:gG.toFixed(4),angle:hz.toFixed(4)};
+  });
+  mset("impl_res",res);
+  addHistory("Implantation",res.filter(p=>p.dist!=="—").map(p=>`${p.name}: D=${p.dist}m | G=${p.gis}gr | Hz=${p.angle}gr`));
+}
+
+function renderRayon(){
+  const pts=getArr("rayon_pts",[{name:"P1",dist:"",gis:""}]);
+  const res=ms("rayon_res",[]);
+  return `<div class="page">
+    ${backBtn()}
+    ${secTitle("⭕","Rayonnement","Calcul des coordonnées par rayonnement polaire depuis une station")}
+    ${card(`<p style="color:#0B1F3A;font-size:11px;font-family:monospace;font-weight:700;margin-bottom:12px">◈ STATION DE DÉPART</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">${field("rayon_sx","X Station",ms("rayon_sx",""),"m")}${field("rayon_sy","Y Station",ms("rayon_sy",""),"m")}</div>`,"margin-bottom:14px")}
+    ${pts.map((pt,i)=>card(`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <p style="color:#1A6B3C;font-size:11px;font-family:monospace;font-weight:700">${pt.name}</p>
+      ${pts.length>1?`<button onclick="rayonDel(${i})" style="background:#FDEDEC;border:1px solid #C0392B;border-radius:6px;color:#C0392B;cursor:pointer;padding:4px 12px;font-size:11px;font-family:monospace">✕</button>`:""}
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      ${field("rayon_d_"+i,"Distance",pt.dist,"m")}${field("rayon_g_"+i,"Gisement",pt.gis,"gr")}
+    </div>`,"margin-bottom:10px")).join("")}
+    <button onclick="rayonAdd()" style="width:100%;padding:10px;background:transparent;border:2px dashed #DDE3EC;border-radius:8px;color:#6B7A8D;cursor:pointer;font-size:12px;font-family:monospace;letter-spacing:1px;margin-bottom:4px">+ AJOUTER UN POINT</button>
+    ${btn("btn-rayon","⚡ Calculer")}
+    ${res.length>0?`<div style="margin-top:18px">${res.map(r=>`
+      <div style="background:#F4F6F9;border:1px solid #DDE3EC;border-radius:8px;padding:12px 14px;margin-bottom:8px">
+        <p style="color:#0B1F3A;font-family:monospace;font-weight:700;margin-bottom:8px">◈ ${r.name}</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div style="background:#fff;border-radius:6px;padding:8px 12px;border:1px solid #DDE3EC"><p style="color:#6B7A8D;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1px">X — EST</p><p style="color:#0B1F3A;font-family:monospace;font-weight:700;font-size:13px;margin:0">${r.x} m</p></div>
+          <div style="background:#fff;border-radius:6px;padding:8px 12px;border:1px solid #DDE3EC"><p style="color:#6B7A8D;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1px">Y — NORD</p><p style="color:#0B1F3A;font-family:monospace;font-weight:700;font-size:13px;margin:0">${r.y} m</p></div>
+        </div>
+      </div>`).join("")}</div>`:""}
+  </div>`;
+}
+function rayonAdd(){const pts=getArr("rayon_pts",[]);pts.push({name:`P${pts.length+1}`,dist:"",gis:""});mset("rayon_pts",pts);}
+function rayonDel(i){const pts=getArr("rayon_pts",[]);pts.splice(i,1);pts.forEach((p,j)=>p.name=`P${j+1}`);mset("rayon_pts",pts);}
+function calcRayon(){
+  ["rayon_sx","rayon_sy"].forEach(k=>mset(k,gv(k)));
+  const pts=getArr("rayon_pts",[]);
+  pts.forEach((pt,i)=>{pt.dist=gv("rayon_d_"+i)||"";pt.gis=gv("rayon_g_"+i)||"";});
+  mset("rayon_pts",[...pts]);
+  const SX=+ms("rayon_sx",""),SY=+ms("rayon_sy","");
+  if(isNaN(SX)||isNaN(SY)){render();return;}
+  const res=pts.map(pt=>{
+    const d=+pt.dist,g=+pt.gis;
+    if(isNaN(d)||isNaN(g))return {...pt,x:"—",y:"—"};
+    const rad=g*G2D*Math.PI/180;
+    return {...pt,x:(SX+d*Math.sin(rad)).toFixed(4),y:(SY+d*Math.cos(rad)).toFixed(4)};
+  });
+  mset("rayon_res",res);
+  addHistory("Rayonnement",res.filter(p=>p.x!=="—").map(p=>`${p.name}: X=${p.x} | Y=${p.y} m`));
+}
+
+function renderRecoup(){
+  const res=ms("recoup_res",null);
+  return `<div class="page">
+    ${backBtn()}
+    ${secTitle("✂️","Recoupement (Intersection)","Coordonnées d'un point inconnu depuis deux points connus")}
+    <div style="background:#E8F5EE;border:1px solid rgba(26,107,60,.3);border-radius:8px;padding:12px 16px;margin-bottom:14px">
+      <p style="color:#1A6B3C;font-size:12px;margin:0">▸ Mesurez le gisement depuis deux points connus A et B vers le point inconnu P.</p>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
+      ${card(`<p style="color:#0B1F3A;font-size:11px;font-family:monospace;font-weight:700;margin-bottom:12px">◈ POINT A (connu)</p>${field("rec_ax","X_A",ms("rec_ax",""),"m")}${field("rec_ay","Y_A",ms("rec_ay",""),"m")}${field("rec_ga","Gisement A→P",ms("rec_ga",""),"gr")}`)}
+      ${card(`<p style="color:#1A6B3C;font-size:11px;font-family:monospace;font-weight:700;margin-bottom:12px">◈ POINT B (connu)</p>${field("rec_bx","X_B",ms("rec_bx",""),"m")}${field("rec_by","Y_B",ms("rec_by",""),"m")}${field("rec_gb","Gisement B→P",ms("rec_gb",""),"gr")}`)}
+    </div>
+    ${btn("btn-recoup","⚡ Calculer Point P")}
+    ${res?`<div style="margin-top:18px;background:#0B1F3A;border-radius:8px;padding:16px">
+      <p style="color:rgba(255,255,255,.5);font-size:11px;font-family:monospace;font-weight:600;letter-spacing:1px;text-transform:uppercase;margin-bottom:12px">◈ POINT P — COORDONNÉES</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div style="background:rgba(255,255,255,.08);border-radius:6px;padding:12px"><p style="color:rgba(255,255,255,.5);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1px">X — EST</p><p style="color:#fff;font-family:monospace;font-weight:700;font-size:18px;margin:0">${res.x} m</p></div>
+        <div style="background:rgba(255,255,255,.08);border-radius:6px;padding:12px"><p style="color:rgba(255,255,255,.5);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1px">Y — NORD</p><p style="color:#fff;font-family:monospace;font-weight:700;font-size:18px;margin:0">${res.y} m</p></div>
+      </div>
+    </div>`:""}
+  </div>`;
+}
+function calcRecoup(){
+  ["rec_ax","rec_ay","rec_ga","rec_bx","rec_by","rec_gb"].forEach(k=>mset(k,gv(k)));
+  const AX=+ms("rec_ax",""),AY=+ms("rec_ay",""),GA=+ms("rec_ga","");
+  const BX=+ms("rec_bx",""),BY=+ms("rec_by",""),GB=+ms("rec_gb","");
+  if([AX,AY,GA,BX,BY,GB].some(isNaN)){render();return;}
+  const gaR=GA*G2D*Math.PI/180,gbR=GB*G2D*Math.PI/180;
+  const tanA=Math.tan(gaR),tanB=Math.tan(gbR);
+  if(Math.abs(tanA-tanB)<1e-10){render();return;}
+  const x=(AY-BY+BX*tanB-AX*tanA)/(tanB-tanA);
+  const y=AY+tanA*(x-AX);
+  mset("recoup_res",{x:x.toFixed(4),y:y.toFixed(4)});
+  addHistory("Recoupement",[`A(${AX},${AY}) G=${GA}gr | B(${BX},${BY}) G=${GB}gr`,`P: X=${x.toFixed(4)} | Y=${y.toFixed(4)} m`]);
+}
+
+function renderCanevas(){
+  const pts=getArr("can_pts",[{name:"P1",angle:"",dist:""},{name:"P2",angle:"",dist:""},{name:"P3",angle:"",dist:""}]);
+  const res=ms("can_res",null);
+  return `<div class="page">
+    ${backBtn()}
+    ${secTitle("🔲","Canevas Polygonal","Polygonale fermée avec compensation angulaire")}
+    <div style="background:#E8F5EE;border:1px solid rgba(26,107,60,.3);border-radius:8px;padding:12px 16px;margin-bottom:14px">
+      <p style="color:#1A6B3C;font-size:12px;margin:0">▸ Saisissez les angles mesurés à chaque station et les distances entre stations.</p>
+    </div>
+    ${pts.map((pt,i)=>card(`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <p style="color:#0B1F3A;font-size:11px;font-family:monospace;font-weight:700">${pt.name}</p>
+      ${pts.length>3?`<button onclick="canDel(${i})" style="background:#FDEDEC;border:1px solid #C0392B;border-radius:6px;color:#C0392B;cursor:pointer;padding:4px 12px;font-size:11px;font-family:monospace">✕</button>`:""}
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      ${field("can_a_"+i,"Angle mesuré",pt.angle,"gr")}${field("can_d_"+i,"Distance",pt.dist,"m")}
+    </div>`,"margin-bottom:10px")).join("")}
+    <button onclick="canAdd()" style="width:100%;padding:10px;background:transparent;border:2px dashed #DDE3EC;border-radius:8px;color:#6B7A8D;cursor:pointer;font-size:12px;font-family:monospace;letter-spacing:1px;margin-bottom:4px">+ AJOUTER UNE STATION</button>
+    ${btn("btn-canevas","⚡ Compenser la Polygonale")}
+    ${res?`<div style="margin-top:18px">${rr("Nb. stations",res.n)}${rr("Σ angles mesurés",res.sum+" gr")}${rr("Valeur théorique",res.theo+" gr")}${rr("Erreur angulaire",res.err+" gr",true)}${rr("Correction / station",res.corr+" gr",true)}</div>`:""}
+  </div>`;
+}
+function canAdd(){const pts=getArr("can_pts",[]);pts.push({name:`P${pts.length+1}`,angle:"",dist:""});mset("can_pts",pts);}
+function canDel(i){const pts=getArr("can_pts",[]);pts.splice(i,1);pts.forEach((p,j)=>p.name=`P${j+1}`);mset("can_pts",pts);}
+function calcCanevas(){
+  const pts=getArr("can_pts",[]);
+  pts.forEach((pt,i)=>{pt.angle=gv("can_a_"+i)||"";pt.dist=gv("can_d_"+i)||"";});
+  mset("can_pts",[...pts]);
+  const angles=pts.map(p=>+p.angle);
+  if(angles.some(isNaN)){render();return;}
+  const sum=angles.reduce((a,b)=>a+b,0);
+  const theo=(pts.length-2)*200;
+  const err=(sum-theo).toFixed(4);
+  const corr=(-+err/pts.length).toFixed(4);
+  mset("can_res",{n:pts.length,sum:sum.toFixed(4),theo,err,corr});
+  addHistory("Canevas Polygonal",[`${pts.length} stations | Σ=${sum.toFixed(4)} gr`,`Théorique: ${theo} gr | Erreur: ${err} gr`,`Correction/angle: ${corr} gr`]);
+}
+
+function renderDrone(){
+  const res=ms("drone_res",null);
+  return `<div class="page">
+    ${backBtn()}
+    ${secTitle("🚁","Drone / Photogrammétrie","Calcul GSD, fauchée et planification de vol")}
+    ${card(`<p style="color:#0B1F3A;font-size:11px;font-family:monospace;font-weight:700;letter-spacing:1px;margin-bottom:12px">◈ PARAMÈTRES DE VOL</p>
+      ${field("drone_alt","Altitude de vol",ms("drone_alt",""),"m")}
+      ${field("drone_fov","Angle FOV caméra",ms("drone_fov","90"),"°")}
+      ${field("drone_ovl","Recouvrement latéral",ms("drone_ovl","80"),"%")}`,"margin-bottom:14px")}
+    ${card(`<p style="color:#6B7A8D;font-size:11px;font-weight:600;letter-spacing:1px;margin-bottom:12px;text-transform:uppercase">Autonomie (optionnel)</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        ${field("drone_vit","Vitesse de vol",ms("drone_vit",""),"km/h")}${field("drone_bat","Autonomie batterie",ms("drone_bat",""),"min")}
+      </div>`,"margin-bottom:14px")}
+    <div style="background:#E8F5EE;border:2px solid rgba(26,107,60,.4);border-radius:10px;padding:16px;margin-bottom:14px">
+      <p style="color:#1A6B3C;font-size:11px;font-family:monospace;font-weight:700;letter-spacing:1px;margin-bottom:12px;text-transform:uppercase">🗺 Localisation OpenStreetMap</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+        ${field("drone_lat","Latitude",ms("drone_lat",""),"°")}${field("drone_lng","Longitude",ms("drone_lng",""),"°")}
+      </div>
+      <button onclick="openMap()" style="width:100%;padding:11px;background:#1A6B3C;border:none;border-radius:8px;color:#fff;font-weight:700;font-size:12px;cursor:pointer;letter-spacing:1px;text-transform:uppercase;font-family:'Courier New',monospace">🗺 OUVRIR OPENSTREETMAP</button>
+    </div>
+    ${btn("btn-drone","⚡ Calculer")}
+    ${res?`<div style="margin-top:18px">${rr("GSD (résolution sol)",res.gsd+" cm/pixel",true)}${rr("Largeur de fauchée",res.fauchee+" m",true)}${rr("Espacement lignes",res.esp+" m")}${res.auto!=="—"?rr("Distance parcourue",res.auto+" km"):""} ${res.surf!=="—"?rr("Surface couverte",res.surf+" ha"):""}</div>`:""}
+  </div>`;
+}
+function openMap(){
+  ["drone_lat","drone_lng"].forEach(k=>mset(k,gv(k)));
+  const la=+ms("drone_lat",""),lo=+ms("drone_lng","");
+  const url=!isNaN(la)&&!isNaN(lo)?`https://www.openstreetmap.org/?mlat=${la}&mlon=${lo}&zoom=15`:"https://www.openstreetmap.org";
+  window.open(url,"_blank");
+}
+function calcDrone(){
+  ["drone_alt","drone_fov","drone_ovl","drone_vit","drone_bat","drone_lat","drone_lng"].forEach(k=>mset(k,gv(k)));
+  const ALT=+ms("drone_alt",""),FOV=+ms("drone_fov","90"),OVL=+ms("drone_ovl","80"),VIT=+ms("drone_vit",""),BAT=+ms("drone_bat","");
+  if([ALT,FOV,OVL].some(isNaN)){render();return;}
+  const gsd=(ALT*6.16)/(3.6*4000)*100;
+  const fauchee=2*ALT*Math.tan(FOV*Math.PI/180/2);
+  const esp=fauchee*(1-OVL/100);
+  const auto=!isNaN(BAT)&&!isNaN(VIT)?(BAT/60*VIT).toFixed(1):"—";
+  const surf=!isNaN(BAT)&&!isNaN(VIT)?((BAT/60*VIT)*esp/10000).toFixed(4):"—";
+  mset("drone_res",{gsd:gsd.toFixed(2),fauchee:fauchee.toFixed(1),esp:esp.toFixed(1),auto,surf});
+  addHistory("Drone",[`Alt: ${ALT}m | FOV: ${FOV}° | Recouv: ${OVL}%`,`GSD: ${gsd.toFixed(2)} cm/px | Fauchée: ${fauchee.toFixed(1)}m`,auto!=="—"?`Autonomie: ${auto}km | Surface: ${surf}ha`:""].filter(Boolean));
+}
+
+function renderCoord(){
+  const pts=getArr("coord_pts",[{name:"P1",dist:"",gis:""},{name:"P2",dist:"",gis:""}]);
+  const res=ms("coord_res",[]);
+  return `<div class="page">
+    ${backBtn()}
+    ${secTitle("🗺️","Coordonnées des Points","Calcul des coordonnées à partir du gisement et de la distance")}
+    ${card(`<p style="color:#0B1F3A;font-size:11px;font-family:monospace;font-weight:700;letter-spacing:1px;margin-bottom:10px">◈ POINT ORIGINE</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">${field("coord_ox","X₀ — Est",ms("coord_ox",""),"m")}${field("coord_oy","Y₀ — Nord",ms("coord_oy",""),"m")}</div>`,"margin-bottom:14px")}
+    ${pts.map((pt,i)=>card(`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <p style="color:#1A6B3C;font-size:11px;font-family:monospace;font-weight:700">${pt.name}</p>
+      ${pts.length>1?`<button onclick="coordDel(${i})" style="background:#FDEDEC;border:1px solid #C0392B;border-radius:6px;color:#C0392B;cursor:pointer;padding:4px 12px;font-size:11px;font-family:monospace">✕</button>`:""}
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      ${field("coord_d_"+i,"Distance",pt.dist,"m")}${field("coord_g_"+i,"Gisement",pt.gis,"gr")}
+    </div>`,"margin-bottom:10px")).join("")}
+    <button onclick="coordAdd()" style="width:100%;padding:10px;background:transparent;border:2px dashed #DDE3EC;border-radius:8px;color:#6B7A8D;cursor:pointer;font-size:12px;font-family:monospace;letter-spacing:1px;margin-bottom:4px">+ AJOUTER UN POINT</button>
+    ${btn("btn-coord","⚡ Calculer")}
+    ${res.length>0?`<div style="margin-top:18px">${res.map(r=>`
+      <div style="background:#F4F6F9;border:1px solid #DDE3EC;border-radius:8px;padding:12px 14px;margin-bottom:8px">
+        <p style="color:#0B1F3A;font-family:monospace;font-weight:700;margin-bottom:8px">◈ ${r.name}</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div style="background:#fff;border-radius:6px;padding:8px 12px;border:1px solid #DDE3EC"><p style="color:#6B7A8D;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1px">X — EST</p><p style="color:#0B1F3A;font-family:monospace;font-weight:700;font-size:13px;margin:0">${r.x} m</p></div>
+          <div style="background:#fff;border-radius:6px;padding:8px 12px;border:1px solid #DDE3EC"><p style="color:#6B7A8D;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1px">Y — NORD</p><p style="color:#0B1F3A;font-family:monospace;font-weight:700;font-size:13px;margin:0">${r.y} m</p></div>
+        </div>
+      </div>`).join("")}</div>`:""}
+  </div>`;
+}
+function coordAdd(){const pts=getArr("coord_pts",[]);pts.push({name:`P${pts.length+1}`,dist:"",gis:""});mset("coord_pts",pts);}
+function coordDel(i){const pts=getArr("coord_pts",[]);pts.splice(i,1);pts.forEach((p,j)=>p.name=`P${j+1}`);mset("coord_pts",pts);}
+function calcCoord(){
+  ["coord_ox","coord_oy"].forEach(k=>mset(k,gv(k)));
+  const pts=getArr("coord_pts",[]);
+  pts.forEach((pt,i)=>{pt.dist=gv("coord_d_"+i)||"";pt.gis=gv("coord_g_"+i)||"";});
+  mset("coord_pts",[...pts]);
+  const OX=+ms("coord_ox",""),OY=+ms("coord_oy","");
+  if(isNaN(OX)||isNaN(OY)){render();return;}
+  const res=pts.map(pt=>{
+    const d=+pt.dist,g=+pt.gis;
+    if(isNaN(d)||isNaN(g))return {...pt,x:"—",y:"—"};
+    const rad=g*G2D*Math.PI/180;
+    return {...pt,x:(OX+d*Math.sin(rad)).toFixed(4),y:(OY+d*Math.cos(rad)).toFixed(4)};
+  });
+  mset("coord_res",res);
+  addHistory("Coordonnées",res.filter(p=>p.x!=="—").map(p=>`${p.name}: X=${p.x} | Y=${p.y} m`));
+}
+
+// ══════════════════════════════════════════════════════
+// HISTORIQUE
+// ══════════════════════════════════════════════════════
+function renderHist(){
+  const h=STATE.history;
+  return `<div class="page">
+    ${backBtn()}
+    ${secTitle("📋","Historique & Export","Tous vos calculs de session")}
+    ${h.length===0?card(`<p style="color:#6B7A8D;text-align:center;font-size:13px;padding:28px 0;font-family:monospace">— AUCUN CALCUL ENREGISTRÉ —<br><span style="font-size:11px">Utilisez les modules depuis la page d'accueil</span></p>`):
+    `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:18px">
+      <button onclick="exportTxt()" style="background:#D4A017;border:2px solid #D4A017;color:#fff;border-radius:8px;padding:12px;font-weight:700;font-size:12px;cursor:pointer;letter-spacing:1px;text-transform:uppercase;font-family:'Courier New',monospace">⬇ Export .TXT</button>
+      <button onclick="exportCsv()" style="background:#1A6B3C;border:2px solid #1A6B3C;color:#fff;border-radius:8px;padding:12px;font-weight:700;font-size:12px;cursor:pointer;letter-spacing:1px;text-transform:uppercase;font-family:'Courier New',monospace">⬇ Export .CSV</button>
+    </div>
+    ${h.map((e,i)=>card(`<div style="display:flex;justify-content:space-between;margin-bottom:8px">
+      <p style="color:#0B1F3A;font-family:monospace;font-weight:700;font-size:12px;margin:0">[${String(i+1).padStart(2,"0")}] ${e.module}</p>
+      <span style="color:#A0AABB;font-size:10px;font-family:monospace">${new Date(e.ts).toLocaleTimeString("fr-FR")}</span>
+    </div>
+    ${e.lines.map((l,j)=>`<p style="color:#1A2332;font-size:12px;font-family:monospace;padding:3px 0;${j<e.lines.length-1?"border-bottom:1px solid #DDE3EC":""}margin:0">▸ ${l}</p>`).join("")}`,"margin-bottom:10px")).join("")}
+    <button onclick="clearHist()" style="width:100%;padding:10px;background:#FDEDEC;border:2px solid #C0392B;border-radius:8px;color:#C0392B;cursor:pointer;font-size:12px;font-family:monospace;letter-spacing:1px;text-transform:uppercase;font-weight:700;margin-top:8px">🗑 EFFACER L'HISTORIQUE</button>`}
+  </div>`;
+}
+function clearHist(){setState({history:[]});}
+function exportTxt(){
+  let txt=`TOPO-CAL v4.0 — RAPPORT\nGénéré le: ${new Date().toLocaleString("fr-FR")}\n${"═".repeat(50)}\n\n`;
+  STATE.history.forEach((h,i)=>{txt+=`[${String(i+1).padStart(2,"0")}] ${h.module} — ${new Date(h.ts).toLocaleTimeString("fr-FR")}\n`;h.lines.forEach(l=>txt+=`     • ${l}\n`);txt+="\n";});
+  txt+=`${"═".repeat(50)}\nFORCES ARMÉES ROYALES — CPL Mohamed Daoudi — 2ème Garde\n`;
+  const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([txt],{type:"text/plain"}));a.download=`TOPOCAL_${Date.now()}.txt`;a.click();
+}
+function exportCsv(){
+  let csv="Module,Heure,Résultat\n";
+  STATE.history.forEach(h=>h.lines.forEach(l=>{csv+=`"${h.module}","${new Date(h.ts).toLocaleTimeString("fr-FR")}","${l}"\n`;}));
+  const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));a.download=`TOPOCAL_${Date.now()}.csv`;a.click();
+}
+
+// ══════════════════════════════════════════════════════
+// MAIN RENDER
+// ══════════════════════════════════════════════════════
+function renderApp(){
+  const {page,tab,history}=STATE;
+  const isModule=!["home","cours","politique","profil","hist"].includes(page);
+
+  const tabs=[
+    {id:"calculs",label:"Calculs",icon:"⚙️"},
+    {id:"cours",label:"Cours",icon:"📚"},
+    {id:"politiques",label:"Politiques",icon:"📋"},
+    {id:"profil",label:"Profil",icon:"🪖"},
+  ];
+
+  let content="";
+  if(page==="home") content=renderHome();
+  else if(page==="cours") content=renderCours();
+  else if(page==="politique") content=renderPolitique();
+  else if(page==="profil") content=renderProfil();
+  else if(page==="gis") content=renderGis();
+  else if(page==="mire") content=renderMire();
+  else if(page==="coord") content=renderCoord();
+  else if(page==="conv") content=renderConv();
+  else if(page==="niv") content=renderNiv();
+  else if(page==="surf") content=renderSurf();
+  else if(page==="impl") content=renderImpl();
+  else if(page==="rayon") content=renderRayon();
+  else if(page==="recoup") content=renderRecoup();
+  else if(page==="canevas") content=renderCanevas();
+  else if(page==="drone") content=renderDrone();
+  else if(page==="hist") content=renderHist();
+  else content=renderHome();
+
+  return `<div style="min-height:100vh;background:#F4F6F9;color:#1A2332;font-family:'Inter',system-ui,sans-serif">
+    <!-- HEADER -->
+    <div style="background:#0B1F3A;padding:10px 16px;position:sticky;top:0;z-index:10;box-shadow:0 2px 16px rgba(11,31,58,.25)">
+      <div style="max-width:700px;margin:0 auto">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+          <button onclick="navigate('home')" style="background:none;border:none;cursor:pointer;display:flex;align-items:center;gap:10px;padding:0">
+            ${shieldSVG(36)}
+            <div style="text-align:left">
+              <p style="font-family:'Courier New',monospace;font-weight:900;font-size:15px;color:#fff;letter-spacing:3px;margin:0">TOPO-CAL</p>
+              <p style="color:rgba(255,255,255,.4);font-size:9px;letter-spacing:2px;font-family:monospace;text-transform:uppercase;margin:0">Forces Armées Royales — v4.0</p>
+            </div>
+          </button>
+          <div style="margin-left:auto;display:flex;align-items:center;gap:8px">
+            ${history.length>0?`<button onclick="navigate('hist')" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:20px;padding:4px 12px;color:#fff;font-size:10px;font-family:monospace;letter-spacing:1px;cursor:pointer">📋 <span style="background:#D4A017;color:#0B1F3A;border-radius:50%;font-size:9px;font-weight:700;padding:1px 5px">${history.length}</span></button>`:""}
+            <div style="background:rgba(34,160,90,.2);border:1px solid rgba(34,160,90,.4);border-radius:20px;padding:4px 12px">
+              <span style="color:#22A05A;font-size:9px;font-family:monospace;letter-spacing:1px">◉ ACTIF</span>
+            </div>
+          </div>
+        </div>
+        <!-- TABS -->
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px">
+          ${tabs.map(t=>{
+            const active=tab===t.id||(t.id==="calculs"&&isModule);
+            return `<button onclick="switchTab('${t.id}')" style="padding:9px 0;background:${active?"#fff":"rgba(255,255,255,.06)"};border:1.5px solid ${active?"transparent":"rgba(255,255,255,.12)"};border-radius:8px;color:${active?"#0B1F3A":"rgba(255,255,255,.6)"};font-weight:${active?700:500};font-size:10px;cursor:pointer;font-family:'Inter',system-ui,sans-serif;display:flex;align-items:center;justify-content:center;gap:4px;box-shadow:${active?"0 2px 12px rgba(11,31,58,.1)":"none"}">
+              <span style="font-size:13px">${t.icon}</span><span>${t.label}</span>
+            </button>`;
+          }).join("")}
+        </div>
+      </div>
+    </div>
+    <!-- CONTENT -->
+    <div style="max-width:700px;margin:0 auto;padding:20px 14px 60px">${content}</div>
+    <!-- FOOTER -->
+    <div style="border-top:1px solid #DDE3EC;padding:10px 20px;text-align:center;font-family:monospace;font-size:9px;color:#A0AABB;letter-spacing:2px;background:#fff">
+      TOPO-CAL v4.0 — CPL MOHAMED DAOUDI — 2ÈME GARDE — FAR
+    </div>
+  </div>`;
+}
+
+function switchTab(id){
+  const page=id==="calculs"?"home":id==="cours"?"cours":id==="politiques"?"politique":"profil";
+  setState({tab:id,page});
+  selectedCours=null;
+  window.scrollTo(0,0);
+}
+
+// ══════════════════════════════════════════════════════
+// EVENT WIRING
+// ══════════════════════════════════════════════════════
+function wireEvents(){
+  // Gisement
+  document.getElementById("btn-gis")?.addEventListener("click",calcGis);
+  // Mire
+  document.getElementById("btn-mire")?.addEventListener("click",calcMire);
+  // Conv
+  document.getElementById("btn-conv")?.addEventListener("click",calcConv);
+  // Niv
+  document.getElementById("btn-niv")?.addEventListener("click",calcNiv);
+  // Surf
+  document.getElementById("btn-surf")?.addEventListener("click",calcSurf);
+  // Impl
+  document.getElementById("btn-impl")?.addEventListener("click",calcImpl);
+  // Rayon
+  document.getElementById("btn-rayon")?.addEventListener("click",calcRayon);
+  // Recoup
+  document.getElementById("btn-recoup")?.addEventListener("click",calcRecoup);
+  // Canevas
+  document.getElementById("btn-canevas")?.addEventListener("click",calcCanevas);
+  // Drone
+  document.getElementById("btn-drone")?.addEventListener("click",calcDrone);
+  // Coord
+  document.getElementById("btn-coord")?.addEventListener("click",calcCoord);
+}
+
+// ══════════════════════════════════════════════════════
+// RENDER ENGINE
+// ══════════════════════════════════════════════════════
+function render(){
+  const root=document.getElementById("root");
+  const {phase}=STATE;
+  if(phase==="intro") root.innerHTML=renderIntro();
+  else if(phase==="password") root.innerHTML=renderPassword();
+  else root.innerHTML=renderApp();
+  wireEvents();
+}
+
+// ══════════════════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════════════════
+STATE.introTyped=INTRO_LINES.map(()=>"");
+render();
+startIntro();
+
+// Service Worker
+if("serviceWorker" in navigator){
+  navigator.serviceWorker.register("sw.js").catch(()=>{});
+}
+
+// FULLSCREEN — hide browser bar
+function goFullscreen(){
+  const el=document.documentElement;
+  if(el.requestFullscreen) el.requestFullscreen();
+  else if(el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+  else if(el.mozRequestFullScreen) el.mozRequestFullScreen();
+}
+
+// Android immersive mode via screen orientation
+if(screen.orientation && screen.orientation.lock){
+  screen.orientation.lock("portrait").catch(()=>{});
+}
+
+// Try fullscreen on first touch
+document.addEventListener("touchstart", function tryFS(){
+  goFullscreen();
+  document.removeEventListener("touchstart", tryFS);
+}, {once:true});
+
+// Also try on load
+window.addEventListener("load", ()=>{
+  setTimeout(goFullscreen, 500);
+});
+</script>
+</body>
+</html>
