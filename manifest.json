@@ -1,7 +1,7 @@
 {
   "name": "TOPO-CAL — Forces Armées Royales",
   "short_name": "TOPO-CAL",
-  "description": "Système de calcul topographique militaire — CAL Mohamed Daoudi — 2ème Garde FAR",
+  "description": "Système de calcul topographique militaire — CPL Mohamed Daoudi — 2ème Garde FAR",
   "start_url": "./index.html",
   "display": "standalone",
   "orientation": "portrait",
@@ -23,6 +23,5 @@
       "purpose": "any maskable"
     }
   ],
-  "screenshots": [],
   "prefer_related_applications": false
 }
